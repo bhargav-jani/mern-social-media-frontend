@@ -6,6 +6,8 @@ import {
 	useMediaQuery,
 	Typography,
 	useTheme,
+	CircularProgress,
+	Alert,
 } from "@mui/material";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import { Formik } from "formik";
@@ -23,10 +25,13 @@ const registerSchema = yup.object().shape({
 	password: yup.string().required("required"),
 	location: yup.string().required("required"),
 	occupation: yup.string().required("required"),
-	picture: yup.object().shape({
-		name: yup.string().required("required"),
-		base64URl: yup.string().required("required")
-	}).required("required"),
+	picture: yup
+		.object()
+		.shape({
+			name: yup.string().required("required"),
+			base64URl: yup.string().required("required"),
+		})
+		.required("required"),
 });
 
 const loginSchema = yup.object().shape({
@@ -42,8 +47,8 @@ const initialValuesRegister = {
 	location: "",
 	occupation: "",
 	picture: {
-		name : "",
-		base64URl : ""
+		name: "",
+		base64URl: "",
 	},
 };
 
@@ -55,6 +60,9 @@ const initialValuesLogin = {
 const Form = () => {
 	const [pageType, setPageType] = useState("login");
 	const { palette } = useTheme();
+	const [isLoading, setIsLoading] = useState(false);
+	const [authErrorMsg, setAuthErrorMsg] = useState("");
+	const [isRegistered, setIsRegistered] = useState(false);
 	const dispatch = useDispatch();
 	const navigate = useNavigate();
 	const isNonMobile = useMediaQuery("(min-width:600px)");
@@ -62,41 +70,64 @@ const Form = () => {
 	const isRegister = pageType === "register";
 
 	const register = async (values, onSubmitProps) => {
+		setIsLoading(true);
+		
 		values.picturePath = values.picture.base64URl;
-
 		const savedUserResponse = await fetch(
-			process.env.REACT_APP_SITE_URL+"/auth/register",
+			process.env.REACT_APP_SITE_URL + "/auth/register",
 			{
 				method: "POST",
-				headers: {'Content-Type': 'application/json', },
+				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(values),
 			}
 		);
-		const savedUser = await savedUserResponse.json();
-		onSubmitProps.resetForm();
-
-		if (savedUser) {
-			setPageType("login");
+		
+		if(!savedUserResponse.ok){
+			const errorRes = await savedUserResponse.json()
+			setAuthErrorMsg(errorRes.msg);
+		} else {
+			const savedUser = await savedUserResponse.json();
+			onSubmitProps.resetForm();
+			setIsRegistered(true)
+	
+			if (savedUser) {
+				setPageType("login");
+			}
 		}
+
+		setIsLoading(false);
 	};
 
 	const login = async (values, onSubmitProps) => {
-		const loggedInResponse = await fetch(process.env.REACT_APP_SITE_URL+"/auth/login", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(values),
-		});
-		const loggedIn = await loggedInResponse.json();
-		onSubmitProps.resetForm();
-		if (loggedIn) {
-			dispatch(
-				setLogin({
-					user: loggedIn.user,
-					token: loggedIn.token,
-				})
-			);
-			navigate("/home");
+		setIsLoading(true);
+	
+		const loggedInResponse = await fetch(
+			process.env.REACT_APP_SITE_URL + "/auth/login",
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(values),
+			}
+		);
+
+		if(!loggedInResponse.ok){
+			const errorRes = await loggedInResponse.json()
+			setAuthErrorMsg(errorRes.msg);
+		} else {
+			const loggedIn = await loggedInResponse.json();
+			onSubmitProps.resetForm();
+			if (loggedIn) {
+				dispatch(
+					setLogin({
+						user: loggedIn.user,
+						token: loggedIn.token,
+					})
+				);
+				navigate("/home");
+			}
 		}
+	
+		setIsLoading(false);
 	};
 
 	const handleFormSubmit = async (values, onSubmitProps) => {
@@ -121,6 +152,8 @@ const Form = () => {
 				resetForm,
 			}) => (
 				<form onSubmit={handleSubmit}>
+					{authErrorMsg &&<Alert onClose={() => setAuthErrorMsg("")} sx={{mb: "1rem"}} severity="error">{authErrorMsg}</Alert>}
+					{isRegistered &&<Alert onClose={() => setIsRegistered(false)} sx={{mb: "1rem"}} severity="success">User account created successfully! Please Log in.</Alert>}
 					<Box
 						display="grid"
 						gap="30px"
@@ -185,13 +218,15 @@ const Form = () => {
 										acceptedFiles=".jpg,.jpeg,.png"
 										multiple={false}
 										onDrop={(acceptedFiles) => {
-												const reader = new FileReader();
-												reader.onload = () => {
-													setFieldValue("picture", {name: acceptedFiles[0].name, base64URl: reader.result})
-												}
-												reader.readAsDataURL(acceptedFiles[0])
-											}
-										}
+											const reader = new FileReader();
+											reader.onload = () => {
+												setFieldValue("picture", {
+													name: acceptedFiles[0].name,
+													base64URl: reader.result,
+												});
+											};
+											reader.readAsDataURL(acceptedFiles[0]);
+										}}
 									>
 										{({ getRootProps, getInputProps }) => (
 											<Box
@@ -241,19 +276,31 @@ const Form = () => {
 
 					{/* BUTTONS */}
 					<Box>
-						<Button
-							fullWidth
-							type="submit"
-							sx={{
-								m: "2rem 0",
-								p: "1rem",
-								backgroundColor: palette.primary.main,
-								color: palette.background.alt,
-								"&:hover": { color: palette.primary.main },
-							}}
-						>
-							{isLogin ? "LOGIN" : "REGISTER"}
-						</Button>
+						{isLoading ? (
+							<Box
+								sx={{
+									display: "flex",
+									justifyContent: "center",
+									margin: "1rem 0",
+								}}
+							>
+								<CircularProgress />
+							</Box>
+						) : (
+							<Button
+								fullWidth
+								type="submit"
+								sx={{
+									m: "2rem 0",
+									p: "1rem",
+									backgroundColor: palette.primary.main,
+									color: palette.background.alt,
+									"&:hover": { color: palette.primary.main },
+								}}
+							>
+								{isLogin ? "LOGIN" : "REGISTER"}
+							</Button>
+						)}
 						<Typography
 							onClick={() => {
 								setPageType(isLogin ? "register" : "login");
